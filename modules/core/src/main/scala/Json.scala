@@ -37,6 +37,12 @@ object Json {
     * Or to lift Schema in general to be Schema[F[_], A] and have the other Schema types extend Schema[Id, A]
     * Now in a Module there would need to be a way to restrict the selection of Effects. Maybe as some sort of Coproduct. E.G. in JSON List :+: Option :+: Id
     * For each of these Effects there needs to be an approriate Fold and a Functor so we can construct things like the jsonSerializer. Currently I am not sure if and how this would generalize.
+    * 
+    * In the case of the Json module i think it'd end up looking a lot like combining FreeMonad Algebras where you have a coproduct over your algebras which you then foldMap into your effect. 
+    * But here we'd have a coproduct over our Effect types and with similar techniques like we encode sumtypes we could create an algebra (F[A] | G[A] | H[A]) => A.
+    * 
+    * But perhaps folds is the wrong way thinking about this. jsonSerializer is really just Schema ~> (? => JSON) 
+    * so perhaps rather than an actual fold over the effects we need a natural transformation over the coproduct of the effect types. Maybe something like FreeChoiceK ????
     **/
 
   type FAlgebra[F[_], A] = F[A] => A
