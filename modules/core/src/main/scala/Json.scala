@@ -30,23 +30,14 @@ object Json {
     }
   }
 
-  /*def nt[ID, G[_], A](
-    schemaModule: SchemaModule
-  )(
-    pure:JSON => G[JSON]
-  )(
-    implicit
-    prims: ToJson[schemaModule.Prim]
-  ): ((schemaModule.Schema.Term[ID, A, ?]) ~> (? => G[JSON])) = new ((schemaModule.Schema.Term[ID, A, ?]) ~> (? => G[JSON])) {
-            //TODO: might be dangerzone because schemamodule termids might not be string.
-    override def apply[X](term: schemaModule.Schema.Term[module.SumTermId, A, X]): X => G[JSON] = (x: X) =>
-        pure(s"""{"${term.id}": ${jsonSerializer(schemaModule)(term.base)(prims)(x)}}""")
-  }*/
+  type FAlgebra[F[_], A] = F[A] => A
 
-  /*
-  I am not happy with a couple of thins. Namely with the requirement of a MonadError here. I think ApplicativeError should be enough and it shouldn't be needed in the first place.
-  Only place where there's a possible error is in the Union Branches and it "shouldn't ever be the case" I think. There should always be exactly ONE union branch applicable.
-   */
+  val listAlgebra: FAlgebra[List, JSON] = lst => lst.mkString("[", ",", "]")
+
+  val optionAlgebra: FAlgebra[Option, JSON] = opt => opt.fold("null")(identity[JSON])
+
+  def foldMap[F[_]: Functor, A, B](fa: F[A])(f: A => B)(fold: FAlgebra[F, B]): B = fold(fa.map(f))
+
   def jsonSerializer[A](
     schemaModule: SchemaModule
   )(
@@ -59,7 +50,6 @@ object Json {
     prims: ToJson[schemaModule.Prim]
   ): A => JSON = {
 
-    //Provokes BS Warning
     def nt[ID, IDM, G[_]](
       idf: ID => IDM
     )(pure: JSON => G[JSON]): ((schemaModule.Schema.Term[ID, A, ?]) ~> (? => G[JSON])) =
@@ -73,7 +63,7 @@ object Json {
 
     schema match {
       case schemaModule.Schema.OptionalSchema(base) =>
-        a => a.fold("null")(x => jsonSerializer(schemaModule)(base)(sumID, productID)(prims)(x))
+        a => foldMap(a)(jsonSerializer(schemaModule)(base)(sumID, productID)(prims))(optionAlgebra)
       case schemaModule.Schema.PrimSchema(prim) => a => prims.serializer(prim)(a)
       case schemaModule.Schema.IsoSchema(base, iso) =>
         a => jsonSerializer(schemaModule)(base)(sumID, productID)(prims)(iso(a))
@@ -96,10 +86,11 @@ object Json {
           fun(rec.f(a)).toList.mkString("{", ",", "}")
         }
 
-      case schemaModule.Schema.SeqSchema(element) =>
+      case listSchema: schemaModule.Schema.SeqSchema[a0] =>
         a =>
-          a.map(jsonSerializer(schemaModule)(element)(sumID, productID)(prims))
-            .mkString("[", ",", "]")
+          foldMap[List, a0, JSON](a)(
+            jsonSerializer(schemaModule)(listSchema.element)(sumID, productID)(prims)
+          )(listAlgebra)
       case union: schemaModule.Schema.Union[_, ae] =>
         a => {
           val fun =
