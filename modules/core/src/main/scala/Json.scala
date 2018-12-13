@@ -30,14 +30,24 @@ object Json {
     }
   }
 
+  /**
+    * So the General idea is to unify the SchemaADT even one step further
+    * In this prototype branch it has 2 entries SeqSchema and OptionalSchema they extends Schema[List[A]] and Schema[Option[A]] respectively.
+    * My current Idea (whether it's a good one or even a feasible one is up to debate) is that we maybe can unify this to an EffectSchema[F[_], A] extends Schema[F[A]]
+    * Or to lift Schema in general to be Schema[F[_], A] and have the other Schema types extend Schema[Id, A]
+    * Now in a Module there would need to be a way to restrict the selection of Effects. Maybe as some sort of Coproduct. E.G. in JSON List :+: Option :+: Id
+    * For each of these Effects there needs to be an approriate Fold and a Functor so we can construct things like the jsonSerializer. Currently I am not sure if and how this would generalize.
+    **/
+
   type FAlgebra[F[_], A] = F[A] => A
 
-  val listAlgebra: FAlgebra[List, JSON] = lst => lst.mkString("[", ",", "]")
+  val listAlgebra:FAlgebra[List, JSON] = lst => lst.mkString("[", ",", "]")
 
-  val optionAlgebra: FAlgebra[Option, JSON] = opt => opt.fold("null")(identity[JSON])
+  val optionAlgebra:FAlgebra[Option, JSON] = opt => opt.fold("null")(identity[JSON])
 
-  def foldMap[F[_]: Functor, A, B](fa: F[A])(f: A => B)(fold: FAlgebra[F, B]): B = fold(fa.map(f))
 
+  def foldMap[F[_]: Functor, A, B](fa:F[A])(f:A => B)(fold:FAlgebra[F, B]):B = fold(fa.map(f))
+ 
   def jsonSerializer[A](
     schemaModule: SchemaModule
   )(
@@ -86,11 +96,8 @@ object Json {
           fun(rec.f(a)).toList.mkString("{", ",", "}")
         }
 
-      case listSchema: schemaModule.Schema.SeqSchema[a0] =>
-        a =>
-          foldMap[List, a0, JSON](a)(
-            jsonSerializer(schemaModule)(listSchema.element)(sumID, productID)(prims)
-          )(listAlgebra)
+      case listSchema:schemaModule.Schema.SeqSchema[a0] =>
+        a =>foldMap[List,a0, JSON](a)(jsonSerializer(schemaModule)(listSchema.element)(sumID, productID)(prims))(listAlgebra)
       case union: schemaModule.Schema.Union[_, ae] =>
         a => {
           val fun =
