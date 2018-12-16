@@ -4,7 +4,7 @@ package schema
 
 import scalaz.Scalaz._
 import scalaz.schema.JsonSchema._
-import FreeChoice._
+import FreeSum._
 
 object Json {
   type JSON = String
@@ -79,7 +79,7 @@ object Json {
         a => jsonSerializer(schemaModule)(base)(sumID, productID)(prims)(iso(a))
       case rec: schemaModule.Schema.RecordSchema[_, ap] =>
         a => {
-          val fun = FreeAp2
+          val fun = FreeProduct
             .contravariantFold[
               schemaModule.Schema.Term[schemaModule.ProductTermId, A, ?],
               ? => IList[JSON],
@@ -103,7 +103,7 @@ object Json {
       case union: schemaModule.Schema.Union[_, ae] =>
         a => {
           val fun =
-            FreeChoice.contravariantFold[
+            FreeSum.contravariantFold[
               schemaModule.Schema.Term[schemaModule.SumTermId, A, ?],
               ? => JSON,
               ae

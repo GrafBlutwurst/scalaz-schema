@@ -12,7 +12,7 @@ trait SchemaModule {
   def prim[A](prim: Prim[A]): Schema[A] = Schema.PrimSchema(prim)
 
   def record[A, AP](
-    fields: FreeAp2[Schema.Term[ProductTermId, A, ?], AP]
+    fields: FreeProduct[Schema.Term[ProductTermId, A, ?], AP]
   )(
     f: A => AP,
     g: AP => A
@@ -52,7 +52,7 @@ trait SchemaModule {
   }
 
   def union[A, AE](
-    choices: FreeChoice[Schema.Term[SumTermId, A, ?], AE]
+    choices: FreeSum[Schema.Term[SumTermId, A, ?], AE]
   )(f: A => AE, g: AE => A): Schema.Union[A, AE] = Schema.Union(choices, f, g)
 
   object Schema {
@@ -61,12 +61,12 @@ trait SchemaModule {
     sealed case class OptionalSchema[A](base: Schema[A]) extends Schema[Option[A]]
     sealed case class PrimSchema[A](prim: Prim[A])       extends Schema[A]
     sealed case class Union[A, AE](
-      choices: FreeChoice[Term[SumTermId, A, ?], AE],
+      choices: FreeSum[Term[SumTermId, A, ?], AE],
       f: A => AE,
       g: AE => A
     ) extends Schema[A]
     sealed case class RecordSchema[A, AP](
-      fields: FreeAp2[Term[ProductTermId, A, ?], AP],
+      fields: FreeProduct[Term[ProductTermId, A, ?], AP],
       f: A => AP,
       g: AP => A
     ) extends Schema[A]
