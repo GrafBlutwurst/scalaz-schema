@@ -63,33 +63,35 @@ trait TestModule extends JsonModule[JsonSchema.type] {
     }
   }
 
+  val d = DerivationTo[Schema]
+
   def personDerivation[TRepr](
     ref: => Derivation[Schema, personSchema.Repr, Person, TRepr, Person]
   ) =
-    DerivationTo[Schema].rec(personSchema)(
-      (d, personFields) =>
+    d.rec(personSchema)(
+      personFields =>
         d.prod(personFields)(
-          (d, l) => d.const(l)(unit),
-          (d, r) =>
+          l => d.const(l)(unit),
+          r =>
             d.field(r)(
-              (d, b) =>
+              b =>
                 d.iso(b)(
-                  (d, b) =>
+                  b =>
                     d.sum(b)(
-                      (d, l) =>
+                      l =>
                         d.union(l)(
-                          (d, b) =>
+                          b =>
                             d.sum(b)(
-                              (d, l) =>
+                              l =>
                                 d.branch(l)(
-                                  (d, b) =>
+                                  b =>
                                     d.rec(b)(
-                                      (d, userFields) =>
+                                      userFields =>
                                         d.prod(userFields)(
-                                          (d, l) => d.const(l)(l),
-                                          (d, r) =>
+                                          l => d.const(l)(l),
+                                          r =>
                                             d.field(r)(
-                                              (d, b) => d.const(b)(self(ref.to))
+                                              b => d.const(b)(self(ref.to))
                                             )(
                                               (id, x) => (id -*>: x).toSchema
                                             )
@@ -102,14 +104,14 @@ trait TestModule extends JsonModule[JsonSchema.type] {
                                 )(
                                   (id, x) => (id -+>: x).toSchema
                                 ),
-                              (d, r) => d.const(r)(r)
+                              r => d.const(r)(r)
                             )(
                               (l, r) => l :+: r
                             )
                         )(
                           (iso, x) => unionUnsafe(x, iso)
                         ),
-                      (d, r) => d.const(r)(r)
+                      r => d.const(r)(r)
                     )(
                       (l, r) => l :+: r
                     )
