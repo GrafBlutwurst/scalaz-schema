@@ -57,16 +57,43 @@ object module extends JsonModule[JsonSchema.type] {
 
   val p = person(person(null))
 
-  val path = "role".narrow :: "user".narrow :: "active".narrow :: HNil
+  type Name    = Witness.`"name"`.T
+  type Foo     = Witness.`"foo"`.T
+  type UserW   = Witness.`"user"`.T
+  type ActiveW = Witness.`"active"`.T
+  type BossW   = Witness.`"boss"`.T
+  type AdminW  = Witness.`"admin"`.T
+  type RightsW = Witness.`"rights"`.T
+  type RoleW   = Witness.`"role"`.T
 
-  //val path = "role".narrow :: HNil
+  import schema.Pathing._
 
-  type Name = Witness.`"name"`.T
-  type Foo  = Witness.`"foo"`.T
+  //import AtPath._
 
-//  import AtPath._
+  //val path = "role".narrow :: "user".narrow :: "active".narrow :: HNil
 
-  val lookup = AtPath(p, path)
+  val path = Base() :: PLeft() :: "name".narrow :: HNil
+
+//  val lookup = AtPath(p, path)
+
+  val schemaTest = prim(JsonSchema.JsonString) :*:
+    prim(
+      JsonSchema.JsonBool
+    )
+
+
+
+  import schema.Representation._
+  val nav = AtPath[
+    RProd[
+      JsonPrim[String], String, JsonPrim[Boolean], Boolean
+    ], 
+    (String,Boolean), 
+    PLeft :: HNil, 
+    JsonPrim[String], 
+    String, 
+    λ[X => RProd[X, String, JsonPrim[Boolean], Boolean]]
+  ](schemaTest, PLeft() ::  HNil)
 
   val burns = Person("Montgommery Burns", Some(Admin(List("billionaire", "evil mastermind"))))
   val homer = Person("Homer Simpson", Some(User(true, burns)))

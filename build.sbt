@@ -5,6 +5,7 @@ val scalacheckVersion = "1.14.0"
 
 inThisBuild(scalaVersion := "2.12.8")
 
+
 lazy val root = project
   .in(file("."))
   .settings(
@@ -21,10 +22,12 @@ lazy val core = project
   .in(file("modules/core"))
   .settings(
     name := "scalaz-schema-core",
+    scalacOptions += "-P:splain:all",
     libraryDependencies ++= Seq(
       "com.chuusai" %% "shapeless" % "2.3.3",
       "com.github.julien-truffaut" %% "monocle-core"  % monocleVersion,
-      "com.github.julien-truffaut" %% "monocle-macro" % monocleVersion
+      "com.github.julien-truffaut" %% "monocle-macro" % monocleVersion,
+      compilerPlugin("io.tryp" % "splain" % "0.4.1" cross CrossVersion.patch)
     ).map(_.exclude("org.scalaz", "scalaz"))
   )
 
