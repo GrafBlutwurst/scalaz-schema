@@ -350,17 +350,6 @@ trait SchemaModule[R <: Realisation] {
   type IsoSchema[F[_, _], RA, A, B] = IsoSchemaF[F, RA, A, B, R.Prim, R.SumTermId, R.ProductTermId]
   type Self[F[_, _], A]             = SelfReference[Any, F, A, R.Prim, R.SumTermId, R.ProductTermId]
 
-  object Interpreter {
-
-    def cata[S[_[_, _], _, _], F[_, _]](alg: HAlgebra[S, F])(implicit ev: HFunctor[S]) =
-      new CataInterpreter[S, F](alg)
-
-    def hylo[S[_[_, _], _, _], F[_, _], G[_, _]](coalg: HCoalgebra[S, G], alg: HAlgebra[S, F])(
-      implicit ev: HFunctor[S]
-    ) = new HyloInterpreter(coalg, alg)
-
-  }
-
   implicit class FixProdSyntax[RA, RB, A, B](schema: Schema[RProd[RA, A, RB, B], (A, B)]) {
 
     def left: Schema[RA, A] =
@@ -408,6 +397,230 @@ trait SchemaModule[R <: Realisation] {
 
   implicit class FixSeqSyntax[RA, A](schema: Schema[RSeq[RA, A], List[A]]) {
     def element: Schema[RA, A] = schema.unFix.asInstanceOf[Sequence[Schema, RA, A]].element
+  }
+
+  implicit class FixPrimSyntax[A](schema: Schema[R.Prim[A], A]) {
+    def prim: R.Prim[A] = schema.unFix.asInstanceOf[RPrim[Schema, A]].prim
+  }
+
+  sealed abstract class Derivation[G[_, _], Repr, A, ReprOut, Out](
+    val schema: Schema[Repr, A]
+  ) {
+    def to: G[ReprOut, Out]
+  }
+
+  sealed class DerivationTo[G[_, _]] {
+
+    def const[XR, X, ReprOut, Out](
+      schema: Schema[XR, X]
+    )(
+      value: G[ReprOut, Out]
+    ): Derivation[G, XR, X, ReprOut, Out] =
+      new Derivation[G, XR, X, ReprOut, Out](schema) {
+        override def to: G[ReprOut, Out] = value
+      }
+
+    //SumCase
+    def sum[
+      XR,
+      YR,
+      X,
+      Y,
+      XROut,
+      YROut,
+      XOut,
+      YOut,
+      ReprOut,
+      Out
+    ](
+      schema: Schema[RSum[XR, X, YR, Y], X \/ Y]
+    )(
+      lDerive: Schema[XR, X] => Derivation[G, XR, X, XROut, XOut],
+      rDerive: Schema[YR, Y] => Derivation[G, YR, Y, YROut, YOut]
+    )(
+      derive: (G[XROut, XOut], G[YROut, YOut]) => G[ReprOut, Out]
+    ): Derivation[G, RSum[XR, X, YR, Y], X \/ Y, ReprOut, Out] =
+      new Derivation[G, RSum[XR, X, YR, Y], X \/ Y, ReprOut, Out](schema) {
+        override def to: G[ReprOut, Out] = {
+          val lDerived = lDerive(schema.left)
+          val rDerived = rDerive(schema.right)
+          derive(lDerived.to, rDerived.to)
+        }
+      }
+
+    //ProductCase
+    def prod[
+      XR,
+      YR,
+      X,
+      Y,
+      XROut,
+      YROut,
+      XOut,
+      YOut,
+      ReprOut,
+      Out
+    ](
+      schema: Schema[RProd[XR, X, YR, Y], (X, Y)]
+    )(
+      lDerive: Schema[XR, X] => Derivation[G, XR, X, XROut, XOut],
+      rDerive: Schema[YR, Y] => Derivation[G, YR, Y, YROut, YOut]
+    )(
+      derive: (G[XROut, XOut], G[YROut, YOut]) => G[ReprOut, Out]
+    ): Derivation[G, RProd[XR, X, YR, Y], (X, Y), ReprOut, Out] =
+      new Derivation[G, RProd[XR, X, YR, Y], (X, Y), ReprOut, Out](schema) {
+        override def to: G[ReprOut, Out] = {
+          val lDerived = lDerive(schema.left)
+          val rDerived = rDerive(schema.right)
+          derive(lDerived.to, rDerived.to)
+        }
+      }
+
+    //field case
+    def field[
+      I <: R.ProductTermId,
+      XR,
+      X,
+      XROut,
+      XOut,
+      ReprOut,
+      Out
+    ](
+      schema: Schema[I -*> XR, X]
+    )(
+      baseDerive: Schema[XR, X] => Derivation[G, XR, X, XROut, XOut]
+    )(
+      derive: (R.ProductTermId, G[XROut, XOut]) => G[ReprOut, Out]
+    ): Derivation[G, I -*> XR, X, ReprOut, Out] =
+      new Derivation[G, I -*> XR, X, ReprOut, Out](schema) {
+        override def to: G[ReprOut, Out] = {
+          val baseDerived = baseDerive(schema.base)
+          derive(schema.id, baseDerived.to)
+        }
+      }
+
+    //branch case
+    def branch[
+      I <: R.SumTermId,
+      XR,
+      X,
+      XROut,
+      XOut,
+      ReprOut,
+      Out
+    ](
+      schema: Schema[I -+> XR, X]
+    )(
+      baseDerive: Schema[XR, X] => Derivation[G, XR, X, XROut, XOut]
+    )(
+      derive: (R.SumTermId, G[XROut, XOut]) => G[ReprOut, Out]
+    ): Derivation[G, I -+> XR, X, ReprOut, Out] =
+      new Derivation[G, I -+> XR, X, ReprOut, Out](schema) {
+        override def to: G[ReprOut, Out] = {
+          val baseDerived = baseDerive(schema.base)
+          derive(schema.id, baseDerived.to)
+        }
+      }
+
+    //record case
+    def rec[
+      XR,
+      XP,
+      X,
+      XROut,
+      XOut,
+      ReprOut,
+      Out
+    ](
+      schema: Schema[RRecord[XR, XP, X], X]
+    )(
+      baseDerive: Schema[XR, XP] => Derivation[G, XR, XP, XROut, XOut]
+    )(
+      derive: (Iso[XP, X], G[XROut, XOut]) => G[ReprOut, Out]
+    ): Derivation[G, RRecord[XR, XP, X], X, ReprOut, Out] =
+      new Derivation[G, RRecord[XR, XP, X], X, ReprOut, Out](schema) {
+        override def to: G[ReprOut, Out] = {
+          val baseDerived = baseDerive(schema.fields)
+          derive(schema.iso, baseDerived.to)
+        }
+      }
+
+    //union case
+    def union[
+      XR,
+      XP,
+      X,
+      XROut,
+      XOut,
+      ReprOut,
+      Out
+    ](
+      schema: Schema[RUnion[XR, XP, X], X]
+    )(
+      baseDerive: Schema[XR, XP] => Derivation[G, XR, XP, XROut, XOut]
+    )(
+      derive: (Iso[XP, X], G[XROut, XOut]) => G[ReprOut, Out]
+    ): Derivation[G, RUnion[XR, XP, X], X, ReprOut, Out] =
+      new Derivation[G, RUnion[XR, XP, X], X, ReprOut, Out](schema) {
+        override def to: G[ReprOut, Out] = {
+          val baseDerived = baseDerive(schema.choices)
+          derive(schema.iso, baseDerived.to)
+        }
+      }
+
+    //iso case
+    def iso[
+      XR,
+      XP,
+      X,
+      XROut,
+      XOut,
+      ReprOut,
+      Out
+    ](
+      schema: Schema[RIso[XR, XP, X], X]
+    )(
+      baseDerive: Schema[XR, XP] => Derivation[G, XR, XP, XROut, XOut]
+    )(
+      derive: (Iso[XP, X], G[XROut, XOut]) => G[ReprOut, Out]
+    ): Derivation[G, RIso[XR, XP, X], X, ReprOut, Out] =
+      new Derivation[G, RIso[XR, XP, X], X, ReprOut, Out](schema) {
+        override def to: G[ReprOut, Out] = {
+          val baseDerived = baseDerive(schema.base)
+          derive(schema.iso, baseDerived.to)
+        }
+      }
+
+    //prim case
+    def prim[
+      X,
+      ReprOut,
+      Out
+    ](
+      schema: Schema[R.Prim[X], X]
+    )(
+      derive: R.Prim[X] => G[ReprOut, Out]
+    ): Derivation[G, R.Prim[X], X, ReprOut, Out] =
+      new Derivation[G, R.Prim[X], X, ReprOut, Out](schema) {
+        override def to: G[ReprOut, Out] =
+          derive(schema.prim)
+      }
+
+  }
+
+  object DerivationTo {
+    def apply[G[_, _]] = new DerivationTo[G] {}
+  }
+
+  object Interpreter {
+
+    def cata[S[_[_, _], _, _], F[_, _]](alg: HAlgebra[S, F])(implicit ev: HFunctor[S]) =
+      new CataInterpreter[S, F](alg)
+
+    def hylo[S[_[_, _], _, _], F[_, _], G[_, _]](coalg: HCoalgebra[S, G], alg: HAlgebra[S, F])(
+      implicit ev: HFunctor[S]
+    ) = new HyloInterpreter(coalg, alg)
+
   }
 
   trait AtPath[Repr, A, P <: HList] {
@@ -784,17 +997,18 @@ trait SchemaModule[R <: Realisation] {
       atPath
     }
 
-    implicit def atRoot[Repr, A, P <: HNil]: Aux[Repr, A, P, Repr, A, Id] = new AtPath[Repr, A, P] {
-      override type ROuter[X] = Id[X]
-      override type RO        = Repr
-      override type O         = A
+    implicit def atRoot[Repr, A, P <: HNil]: Aux[Repr, A, P, Repr, A, Id] =
+      new AtPath[Repr, A, P] {
+        override type ROuter[X] = X
+        override type RO        = Repr
+        override type O         = A
 
-      override def select(schema: Schema[Repr, A]): Schema[Repr, A] = schema
+        override def select(schema: Schema[Repr, A]): Schema[Repr, A] = schema
 
-      override def applyAt[RD](schema: Schema[Repr, A])(
-        f: Schema[Repr, A] => Schema[RD, A]
-      ): Schema[RD, A] = f(schema)
-    }
+        override def applyAt[RD](schema: Schema[Repr, A])(
+          f: Schema[Repr, A] => Schema[RD, A]
+        ): Schema[RD, A] = f(schema)
+      }
 
   }
 

@@ -81,21 +81,115 @@ object module extends JsonModule[JsonSchema.type] {
       JsonSchema.JsonBool
     )
 
-
-
   import schema.Representation._
+
   val nav = AtPath[
     RProd[
-      JsonPrim[String], String, JsonPrim[Boolean], Boolean
-    ], 
-    (String,Boolean), 
-    PLeft :: HNil, 
-    JsonPrim[String], 
-    String, 
+      JsonPrim[String],
+      String,
+      JsonPrim[Boolean],
+      Boolean
+    ],
+    (String, Boolean),
+    PLeft :: HNil,
+    JsonPrim[String],
+    String,
     λ[X => RProd[X, String, JsonPrim[Boolean], Boolean]]
-  ](schemaTest, PLeft() ::  HNil)
+  ](schemaTest, PLeft() :: HNil)(
+    AtPath.atProdLeft[
+      JsonPrim[String],
+      String,
+      JsonPrim[Boolean],
+      Boolean,
+      HNil,
+      JsonPrim[String],
+      String,
+      Id
+    ](
+      AtPath.atRoot[JsonPrim[String], String, HNil]
+    )
+  )
+
+  val newST = nav.applyAt(schemaTest)(
+    _ => iso(prim(JsonBool), Iso[Boolean, String](b => b.toString)(s => s == "true"))
+  )
 
   val burns = Person("Montgommery Burns", Some(Admin(List("billionaire", "evil mastermind"))))
   val homer = Person("Homer Simpson", Some(User(true, burns)))
+
+  final case class ReprExtractor[Repr, A](schema: Schema[Repr, A]) {
+    type Out = Repr
+  }
+
+  val pre = ReprExtractor(p)
+
+  val d = DerivationTo[Schema]
+
+  def personDerivation[TRepr](
+    ref: => Derivation[Schema, pre.Out, Person, TRepr, Person]
+  ) =
+    d.rec(p)(
+      personFields =>
+        d.prod(personFields)(
+          l => d.const(l)(unit),
+          r =>
+            d.field(r)(
+              b =>
+                d.iso(b)(
+                  b =>
+                    d.sum(b)(
+                      l =>
+                        d.union(l)(
+                          b =>
+                            d.sum(b)(
+                              l =>
+                                d.branch(l)(
+                                  b =>
+                                    d.rec(b)(
+                                      userFields =>
+                                        d.prod(userFields)(
+                                          l => d.const(l)(l),
+                                          r =>
+                                            d.field(r)(
+                                              b => d.const(b)(self(ref.to))
+                                            )(
+                                              (id, x) => (id -*>: x).toSchema
+                                            )
+                                        )(
+                                          (l, r) => l :*: r
+                                        )
+                                    )(
+                                      (iso, x) => unsafeRecord(x, iso)
+                                    )
+                                )(
+                                  (id, x) => (id -+>: x).toSchema
+                                ),
+                              r => d.const(r)(r)
+                            )(
+                              (l, r) => l :+: r
+                            )
+                        )(
+                          (iso, x) => unsafeUnion(x, iso)
+                        ),
+                      r => d.const(r)(r)
+                    )(
+                      (l, r) => l :+: r
+                    )
+                )(
+                  (isoI, x) => iso(x, isoI)
+                )
+            )(
+              (id, x) => (id -*>: x).toSchema
+            )
+        )(
+          (_, r) => r
+        )
+    )(
+      (_, x) =>
+        unsafeRecord(
+          x,
+          Iso[Option[Role], Person](Person("default", _))(_.role)
+        )
+    )
 
 }
